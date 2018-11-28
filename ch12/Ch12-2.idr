@@ -26,7 +26,7 @@ namespace Reader
 
 
 namespace Writer
-  data Writer : Type -> Type -> Type where
+  data Writer : logType -> (a : Type) -> Type where
     Pure : a -> Writer (List String) a
     Bind : Writer (List String) a -> (a -> Writer (List String) b) -> Writer (List String) b
     Tell : String -> Writer (List String) ()
@@ -52,9 +52,7 @@ namespace Writer
 
   partial
   gcd : Int -> Int -> Writer (List String) Int
-  gcd a 0 = 
-    do tell ("finished with a = " ++ show a)
-       Pure a
+  gcd a 0 = tell ("finished with a = " ++ show a) >>= (\_ => Pure a)
   gcd a k = 
     do tell (show a ++ " `mod` " ++ show k ++ " = " ++ show (a `mod` k))
        gcd k (a `mod` k)
@@ -63,5 +61,46 @@ namespace State
   data State : stateType -> Type -> Type where
     Get : State stateType stateType
     Put : stateType -> State stateType ()
-    Bind : State stateType a -> (a -> State stateType b) -> State stateType b
     
+    Pure : a -> State stateType a
+    Bind : State stateType a -> (a -> State stateType b) -> State stateType b
+
+  runState : State stateType a -> stateType -> (a, stateType)
+  runState (Pure x) st = (x, st)
+  runState Get st = (st, st)
+  runState (Put st') _ = ((), st')
+  runState (Bind sta f) st = 
+    let
+      (v', st') = runState sta st
+    in runState (f v') st'
+      
+        
+Functor (Reader r) where
+  map f r = Bind r (\a => Pure $ f a)
+
+Applicative (Reader r) where
+  pure x = Pure x
+  (<*>) rf ra = Bind rf (\f => Bind ra (\a => Pure $ f a))
+
+Monad (Reader r) where
+  (>>=) = Bind
+
+Functor (Writer (List String)) where
+  map f wa = Bind wa (\a => Pure $ f a)
+
+Applicative (Writer (List String)) where
+  pure x = Pure x
+  (<*>) wf wa = Bind wf (\f => Bind wa (\a => Pure $ f a))
+
+Monad (Writer (List String)) where
+  (>>=) = Bind
+
+Functor (State stateType) where
+  map f sa = Bind sa (\a => Pure $ f a)
+
+Applicative (State sty) where
+  pure = Pure
+  (<*>) sf sa = Bind sf (\f => Bind sa (\a => Pure $ f a))
+
+Monad (State sty) where
+  (>>=) = Bind
