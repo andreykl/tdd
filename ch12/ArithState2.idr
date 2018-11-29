@@ -1,5 +1,7 @@
 module Main
 
+import Data.Primitives.Views
+
 %default total
 
 record Score where
@@ -63,24 +65,42 @@ partial
 forever : Forever
 forever = More forever
 
-runCommand : Command a -> IO a
-runCommand GetRandom = pure 3
-runCommand GetGameState = pure ?state
-runCommand (PutGameState x) = ?hole
-runCommand (PutStr x) = putStr x
-runCommand (PutStrLn x) = putStrLn x
-runCommand GetStr = getLine
-runCommand (Pure x) = pure x
-runCommand (Bind x f) = do a1 <- runCommand x
-                           runCommand $ f a1
+f2vsg : {rnds : Stream Int, st : GameState} -> a1 -> (a1, Stream Int, GameState)
+f2vsg {rnds} {st} x = (x, rnds, st)
 
-run : Forever -> ConsoleIO a -> IO a
-run _ (Quit x) = pure x
-run (More more) (Do ca next) = (runCommand ca) >>= (\a => run more (next a))
+limit : Int -> Int -> Int
+limit r mx with (divides r mx)
+  limit r 0 | DivByZero = 1
+  limit ((mx * div) + rem) mx | (DivBy prf) = abs rem + 1
+
+
+runCommand : (rnds : Stream Int) -> (st : GameState) -> Command a -> IO (a, Stream Int, GameState)
+runCommand rnds st (PutStr x) = map (f2vsg {rnds} {st}) $ putStr x
+runCommand rnds st (PutStrLn x) = map (f2vsg {rnds} {st}) $ putStrLn x
+runCommand rnds st GetStr = map (f2vsg {rnds} {st}) $ getLine
+runCommand (x::rnds) st GetRandom = map (f2vsg {rnds} {st}) $ pure (limit x (difficulty st))
+runCommand rnds st GetGameState = map (f2vsg {rnds} {st}) $ pure st
+runCommand rnds st (PutGameState x) = pure ((), rnds, x)
+runCommand rnds st (Pure x) = map (f2vsg {rnds} {st}) $ pure x
+runCommand rnds st (Bind x f) = do (a1, rnds1, state1) <- runCommand rnds st x
+                                   runCommand rnds1 state1 $ f a1
+
+run : Forever -> Stream Int -> GameState -> ConsoleIO a -> IO (a, Stream Int, GameState)
+run _ rnds st (Quit x) = pure (x, rnds, st)
+run (More more) rnds st (Do ca next) = (runCommand rnds st ca) >>= (\(a1, rnds1, state1) => run more rnds1 state1 (next a1))
+
+randoms : Int -> Stream Int
+randoms seed = let seed' = seed * 1664525 + 1013904223 in (seed' `shiftR` 2) :: randoms seed'
 
 data Input : Type where
   QuitCmd : Input
   Answer : Int -> Input
+  
+readInput : String -> Command Input
+readInput str =
+  do PutStr str
+     ans <- GetStr
+     if ans == "quit" then Pure QuitCmd else Pure $ Answer (cast ans)
 
 mutual
   correct : ConsoleIO GameState
@@ -97,9 +117,6 @@ mutual
        PutGameState (addWrong st)
        quiz
 
-  readInput : String -> Command Input
-  readInput s = ?readInput_rhs
-
   quiz : ConsoleIO GameState
   quiz = do a <- GetRandom
             b <- GetRandom
@@ -112,3 +129,9 @@ mutual
                                   then correct
                                   else wrong (a * b)
               QuitCmd => Quit st
+
+partial
+main : IO ()
+main =
+  do (_, _, st) <- run forever (randoms 25) initState quiz
+     putStrLn $ "Final score: " ++ show st
