@@ -104,3 +104,16 @@ Applicative (State sty) where
 
 Monad (State sty) where
   (>>=) = Bind
+  
+crew : List String
+crew = ["Lister", "Rimmer", "Kryten", "Cat"]
+
+main : IO ()
+main =
+  do putStr "Display crew? "
+     ans <- getLine
+     when (ans == "yes") $
+       do sequence_ $ map putStrLn crew
+          pure ()
+     putStrLn "Done"
+
