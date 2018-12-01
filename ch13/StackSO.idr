@@ -48,6 +48,10 @@ data Input : Type where
   IDuplicate : Input
   IDiscard : Input
 
+data UnaryOperation : Type where
+  UODup : UnaryOperation
+  UODisc : UnaryOperation
+
 parseInput : String -> Maybe Input
 parseInput str = 
   case str of
@@ -80,6 +84,8 @@ duplicateUnOp = do v <- Top
                    Push v
                    Pure $ "Duplicated: " ++ show v
 
+unaryStackCmd : UnaryOperation -> StackCmd String (S h) (S (S h))
+
 mutual
   tryBiOp : String -> (Integer -> Integer -> Integer) -> StackIO hin
   tryBiOp _      op {hin=S (S k)} = do res <- biOp op
@@ -89,14 +95,21 @@ mutual
                                          "Unable to execute operation " ++ opName ++ ": fewer then two items on stack."
                                        stackCalc
 
-  tryUnOp : Show a => String -> StackCmd a hIn hOut -> StackIO hIn
+  tryUnOp : String -> StackCmd String hIn hOut -> StackIO hIn
   tryUnOp _ op   {hIn=S h} = do res <- op
-                                PutStrLn $ show res
+                                PutStrLn res
                                 stackCalc
   tryUnOp opName _         = do PutStrLn $ 
                                   "Unable to execute " ++ opName ++ " operation: no elements on stack."
                                 stackCalc
 
+  tryUnOp' : String -> UnaryOperation -> StackIO height
+  tryUnOp' _      op {height=S h} = do res <- unaryStackCmd op
+                                       PutStrLn res
+                                       stackCalc
+  tryUnOp' opName _            = do PutStrLn $
+                                      "Unable to execute " ++ opName ++ " operation: no elements on stack."
+                                    stackCalc
 
   stackCalc : StackIO height
   stackCalc = do PutStr "> "
