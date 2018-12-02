@@ -14,14 +14,14 @@ data StackCmd : Type -> (inputHeight : Nat) -> (outputHeight : Nat) -> Type wher
   Push : Integer -> StackCmd () height (S height)
   Pop : StackCmd Integer (S height) height
   Top : StackCmd Integer (S height) (S height)
-  
+
   PutStr : String -> StackCmd () h h
   PutStrLn : String -> StackCmd () h h
   GetStr : StackCmd String h h
-  
+
   Pure : a -> StackCmd a h h
   (>>=) : StackCmd a h1 h2 -> (a -> StackCmd b h2 h3) -> StackCmd b h1 h3
-  
+
 
 runStack : (stck : Vect inH Integer) -> StackCmd ty inH outH -> IO (ty, Vect outH Integer)
 runStack stck (Push x) = pure ((), x :: stck)
@@ -45,37 +45,24 @@ namespace StackDo
 data Input : Type where
   INumber : Integer -> Input
   IAdd : Input
-  ISubtract : Input
-  IMultiply : Input
   IDuplicate : Input
   IDiscard : Input
-  INegate : Input
-  
-
-data UnaryOperation : Type where
-  UODup : UnaryOperation
-  UODisc : UnaryOperation
-  UONeg : UnaryOperation
 
 parseInput : String -> Maybe Input
 parseInput str = 
   case str of
     "" => Nothing
     "add" => Just IAdd
-    "subtract" => Just ISubtract
-    "multiply" => Just IMultiply
-    "duplicate" => Just IDuplicate
+    "duplicte" => Just IDuplicate
     "discard" => Just IDiscard
-    "negate" => Just INegate
     _      => if all isDigit $ unpack str then Just (INumber $ cast str) else Nothing
-    
-  
+
 
 run : Forever -> Vect n Integer -> StackIO n -> IO ()
 run _          _    (QuitCmd a) = pure ()
 run (More far) stck (Do sa f)   = do (a', stck') <- runStack stck sa 
                                      run far stck' (f a')
-                                     
+
 biOp : (Integer -> Integer -> Integer) -> StackCmd String (S (S height)) (S height)
 biOp op = do a <- Pop 
              b <- Pop
@@ -92,22 +79,6 @@ duplicateUnOp = do v <- Top
                    Push v
                    Pure $ "Duplicated: " ++ show v
 
-negateUnOp : StackCmd String (S height) (S height)
-negateUnOp = do v <- Pop
-                Push (-v)
-                Pure $ show (-v)
-
-UnaryOpOutHeight : UnaryOperation -> Nat -> Nat
-UnaryOpOutHeight UODup inheightBase = S (S inheightBase)
-UnaryOpOutHeight UODisc inheightBase = inheightBase
-UnaryOpOutHeight UONeg inheightBase = (S inheightBase)
-
-unaryStackCmd : (op: UnaryOperation) -> StackCmd String (S h) (UnaryOpOutHeight op h)
-unaryStackCmd UODup = duplicateUnOp
-unaryStackCmd UODisc = discardUnOp
-unaryStackCmd UONeg = negateUnOp
---unaryStackCmd : UnaryOperation -> StackCmd String (S h) (S (S h))
-
 mutual
   tryBiOp : String -> (Integer -> Integer -> Integer) -> StackIO hin
   tryBiOp _      op {hin=S (S k)} = do res <- biOp op
@@ -117,21 +88,13 @@ mutual
                                          "Unable to execute operation " ++ opName ++ ": fewer then two items on stack."
                                        stackCalc
 
-  tryUnOp : String -> StackCmd String hIn hOut -> StackIO hIn
+  tryUnOp : Show a => String -> StackCmd a hIn hOut -> StackIO hIn
   tryUnOp _ op   {hIn=S h} = do res <- op
-                                PutStrLn res
+                                PutStrLn $ show res
                                 stackCalc
   tryUnOp opName _         = do PutStrLn $ 
                                   "Unable to execute " ++ opName ++ " operation: no elements on stack."
                                 stackCalc
-
-  tryUnOp' : String -> UnaryOperation -> StackIO height
-  tryUnOp' _      op {height=S h} = do res <- unaryStackCmd op
-                                       PutStrLn res
-                                       stackCalc
-  tryUnOp' opName _            = do PutStrLn $
-                                      "Unable to execute " ++ opName ++ " operation: no elements on stack."
-                                    stackCalc
 
   stackCalc : StackIO height
   stackCalc = do PutStr "> "
@@ -140,11 +103,8 @@ mutual
                    Nothing => do PutStrLn "invalid input"; stackCalc
                    (Just (INumber x)) => do Push x; stackCalc
                    (Just IAdd) => tryBiOp "add" (+)
-                   (Just ISubtract) => tryBiOp "subtract" (-)
-                   (Just IMultiply) => tryBiOp "multiply" (*)
-                   (Just IDuplicate) => tryUnOp' "duplicate" UODup
-                   (Just IDiscard) => tryUnOp' "discard" UODisc
-                   (Just INegate) => tryUnOp' "negate" UONeg                   
+                   (Just IDuplicate) => ?holedup
+                   (Just IDiscard) => ?holedisc -- tryUnOp "discard" discardUnOp
 
 partial
 main : IO ()
