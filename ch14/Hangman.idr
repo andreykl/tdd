@@ -22,7 +22,7 @@ data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
   Won : GameCmd () (Running (S guesses) Z) (const NotRunning)
   Lost : GameCmd () (Running Z (S letters)) (const NotRunning)
   
-  ShowState : GameCmd String state (const state)
+  ShowState : GameCmd () state (const state)
   Message : String -> GameCmd () state (const state)
   ReadGuess : GameCmd Char state (const state)
 
@@ -41,15 +41,14 @@ gameLoop {guesses} {letters} = do
   Correct <- Guess g 
     | Incorrect => 
         do case guesses of
-             Z => do ShowState
-                     Message "Game is lost. Try again."
-                     Lost
+             Z => do Lost
+                     ShowState
                      Exit
-             (S k) => do Message "Incorrect"
+             (S k) => do Message "Incorrect..."
                          gameLoop 
   case letters of
-    Z => do ShowState
-            Won
+    Z => do Won
+            ShowState
             Exit
     (S k) => do Message "Right!"
                 gameLoop
@@ -69,11 +68,12 @@ Show (Game g) where
   show (GameWin word) = "Player has won, word is " ++ word
   show (GameLost word) = "Player has lost, word is " ++ word
   show (InProgress word guesses missing)
-    = "\n" ++ pack (map hideMissing $ unpack word) ++
+    = --"\n(missing: " ++ show missing ++ ")" ++
+      "\n" ++ pack (map hideMissing $ unpack word) ++
       "\n" ++ show guesses ++ " guesses left"
     where
       hideMissing : Char -> Char
-      hideMissing x = if x `elem` missing then '-' else x
+      hideMissing x = if toUpper x `elem` missing then '-' else x
 
 data Forever = More Forever
 
@@ -84,4 +84,39 @@ forever = More forever
 data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
   OK : (res : ty) -> Game (outstate_fn res) -> GameResult ty outstate_fn
 
+ok : (res : ty) -> Game (outstate_fn res) -> IO (GameResult ty outstate_fn)
+ok res g = pure $ OK res g
+
+runCmd : Forever -> Game instate -> GameCmd ty instate outstate_fn -> IO (GameResult ty outstate_fn)
+runCmd frvr st (NewGame word guesses) = ok () (InProgress word guesses (fromList $ letters word))
+runCmd frvr (InProgress word (S guesses) missing) (Guess c) =
+  case isElem c missing of
+    (Yes prf) => ok Correct (InProgress word (S guesses) (dropElem missing prf))
+    (No contra) => ok Incorrect (InProgress word guesses missing)  
+runCmd frvr (InProgress word _ _) Won = ok () (GameWin word)
+runCmd frvr (InProgress word _ _) Lost = ok () (GameLost word)
+runCmd frvr st ShowState = do printLn st; ok () st
+runCmd frvr st (Message str) = do putStrLn str; ok () st
+runCmd (More frvr) st ReadGuess = 
+  do putStr "Guess: "
+     guess <- getLine
+     case map toUpper $ unpack guess of
+       [c] => if isAlpha c
+                 then ok c st
+                 else do putStrLn "Incorrect guess: please enter charachter from alphabet"
+                         runCmd frvr st ReadGuess
+       _   => do putStrLn "Incorrect guess: please enter one character"
+                 runCmd frvr st ReadGuess
+runCmd frvr st (Pure res) = ok res st
+runCmd (More frvr) st (x >>= f) = do (OK res' st') <- runCmd frvr st x
+                                     runCmd frvr st' (f res')
+
 run : Forever -> Game instate -> GameLoop ty instate outstate_fn -> IO (GameResult ty outstate_fn)
+run (More frvr) st (loop >>= next) = do (OK res newSt) <- runCmd frvr st loop
+                                        run frvr newSt (next res)
+run (More frvr) st Exit = ok () st
+
+partial
+main : IO ()
+main = do run forever GameStart hangman
+          pure ()
