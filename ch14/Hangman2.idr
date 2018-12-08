@@ -12,7 +12,7 @@ cNotRunning : a -> GameState
 cNotRunning = const NotRunning
 
 letters : String -> List Char
-letters = map toUpper . unpack
+letters = nub . map toUpper . unpack
 
 data CheckResult = GuessCorrect | GuessIncorrect
 
@@ -62,9 +62,12 @@ hangman = do NewGame "testing" 6
              gameLoop
 
 data Game : GameState -> Type where
+  NotStarted : Game NotRunning
   InProgress : (res : ty) -> (word : String) -> (guesses : Nat) -> (Vect letters Char) -> Game (Running guesses letters)
   GameWon : String -> Game NotRunning
   GameLost : String -> Game NotRunning  
+
+  
 
 data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
   OK : (res : ty) -> (Game (outstate_fn res)) -> GameResult ty outstate_fn
@@ -73,9 +76,20 @@ ok : (res : ty) -> Game (outstate_fn res) -> IO (GameResult ty outstate_fn)
 ok res st = pure $ OK res st
 
 Show (Game g) where
+  show NotStarted = "this game is not started"
+  show (InProgress res word guesses missing) = 
+      "\nguesses: " ++ show guesses ++
+      "\n" ++ pack (map hideMissing $ unpack word) ++ "\n"
+    where
+      hideMissing : Char -> Char
+      hideMissing c = if toUpper c `elem` missing then '-' else c
+  show (GameWon x) = "player has won. word is " ++ x
+  show (GameLost x) = "player has lost. word is " ++ x
+
 
 runCmd : Forever -> (Game instate) -> GameCmd a instate state_fn -> IO (GameResult a state_fn)
-runCmd _ inst (NewGame word guesses) = pure (OK () (InProgress () word guesses (fromList $ letters word)))
+runCmd _ inst (NewGame word guesses) = 
+  pure (OK () (InProgress () word guesses (fromList $ letters word)))
 runCmd _ (InProgress _ word _ _) Won = ok () (GameWon word)
 runCmd _ (InProgress _ word _ _) Lost = ok () (GameLost word)
 runCmd (More frvr) inst ReadGuess = 
@@ -89,16 +103,27 @@ runCmd (More frvr) inst ReadGuess =
        _   => do putStrLn "Please enter one char"
                  runCmd frvr inst ReadGuess
 runCmd _ (InProgress _ word (S guesses) cs) (CheckGuess c)
-  = case isElem c cs of
+  = case isElem (toUpper c) cs of
       (Yes prf) => ok GuessCorrect (InProgress GuessCorrect word _ (dropElem cs prf))
       (No contra) => ok GuessIncorrect (InProgress GuessIncorrect word _ cs)
 runCmd _ inst (Message msg) = do putStrLn msg; ok () inst
-runCmd _ inst ShowState = ?runCmd_rhs_7
-runCmd _ inst (Pure res) = ?runCmd_rhs_8
-runCmd _ inst (x >>= f) = ?runCmd_rhs_9
---runCmd _ inst (NewGame word guesses) = pure (InProgress () word guesses (fromList $ letters word))
--- runCmd _ (Running (S guesses) (S letters)) (CheckGuess x) = ?runCmd_rhs_5
--- runCmd _ initState (Message x) = ?runCmd_rhs_6
--- runCmd _ initState ShowState = ?runCmd_rhs_7
--- --runCmd _ (state_fn res) (Pure res) = ?runCmd_rhs_8
--- runCmd _ initState (x >>= f) = ?runCmd_rhs_9
+runCmd _ inst ShowState = do printLn inst; ok () inst
+runCmd _ inst (Pure res) = ok res inst
+runCmd (More frvr) inst (cmd >>= next) = 
+  do (OK res' st') <- runCmd frvr inst cmd
+     runCmd frvr st' (next res')
+
+run : Forever -> (Game instate) -> GameLoop a instate state_fn -> IO (GameResult a state_fn)
+run (More frvr) inst (cmd >>= next) = do (OK res' st') <- runCmd frvr inst cmd
+                                         run frvr st' (next res')
+run frvr inst Exit = ok () NotStarted
+
+partial
+forever : Forever
+forever = More forever
+
+partial
+main : IO ()
+main = do (OK _ _) <- run forever NotStarted hangman
+          pure ()
+          
