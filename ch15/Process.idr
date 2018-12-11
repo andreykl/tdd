@@ -48,7 +48,7 @@ run (x >>= f) = do x' <- run x
 procAdder : Process ()
 procAdder = do Respond (\msg => case msg of
                                   (Add k j) => k + j)
-               Pure ()
+               procAdder
 
 procMain : Process ()
 procMain =
@@ -57,3 +57,5 @@ procMain =
      Just a <- Request (Add 5 3) msgpid
        | Nothing => Action (putStrLn "unable to request")
      Action (putStrLn $ "answer is " ++ show a)
+
+Loop : Inf (Process a) -> Process a
