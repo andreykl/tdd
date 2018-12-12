@@ -2,6 +2,8 @@ module Main
 
 import System.Concurrency.Channels
 
+%default total
+
 data Forever = More Forever
 
 data Message = Add Nat Nat
@@ -41,7 +43,7 @@ procMain = do
 
 run : Forever -> Process a st1 st2 -> IO (Maybe a)
 run _ (Action act) = Just <$> act
-run (More frvr) (Spawn proc) = do
+run frvr (Spawn proc) = do
   Just pid <- spawn (do run frvr proc; pure ())
     | Nothing => pure Nothing
   pure (Just $ Just (MkMessage pid))
@@ -63,9 +65,9 @@ run _ (Respond f) = do
   pure (Just (Just msg))
 run (More frvr) (Loop proc) = run frvr proc
 run _ (Pure x) = pure (Just x)
-run (More frvr) (x >>= f) = do Just a <- run frvr x
-                                 | Nothing => pure Nothing
-                               run frvr (f a)
+run frvr (x >>= f) = do Just a <- run frvr x
+                          | Nothing => pure Nothing
+                        run frvr (f a)
 
 
 partial
