@@ -1,5 +1,6 @@
 module WordCount
 
+import System
 import ProcessLib
 
 record WordCount where
@@ -53,6 +54,7 @@ procMain = do
     | Nothing => Action (putStrLn "spawn failed")
   Request pid (Count filename)
   Action (putStrLn "processing our processes...")
+  Action (usleep 1000)
   Action (putStrLn "now requesting results")
   Just ans <- Request pid (GetData filename)
     | Nothing => Action (putStrLn "unable to find data for file")

@@ -1,6 +1,6 @@
 module ListProc
 
-import ProcessLib
+import ProcessLib3
 
 data ListAction : Type where
   Length : List elem -> ListAction
@@ -9,12 +9,15 @@ data ListAction : Type where
 ListActionType : ListAction -> Type
 ListActionType (Length _) = Nat
 ListActionType (Concat _ _ {elem}) = List elem
-
-procList : Service ListActionType ()
+  
+procList : Process ListActionType () NoRequest Complete
 procList = do
   Respond (\msg => case msg of
                      (Length xs) => Pure (length xs)
                      (Concat xs ys) => Pure (xs ++ ys))
+  -- ?hole
+  -- Respond (sometype) >>= (Loop proc)
+  -- Process sif (Maybe reqType) NoRequest Sent >>= 
   Loop procList
 
 procMain : Client ()
@@ -25,4 +28,3 @@ procMain = do
   Action (putStrLn $ "list len is " ++ show len)
   xs <- Request pid (Concat [1,2,4] [4,5,6])
   Action (putStrLn $ "concated list is " ++ show xs)
-

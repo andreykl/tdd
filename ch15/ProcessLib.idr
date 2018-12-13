@@ -19,10 +19,13 @@ data MessagePID : (iface : reqType -> Type) -> Type where
   MkMessage : PID -> MessagePID iface
 
 public export  
-data Process : (iface : reqType -> Type) -> Type -> (in_state : ProcState) -> (out_state : ProcState) -> Type where
-  Action : IO a -> Process iface a st st
-  Spawn : Process service_iface () NoRequest Complete -> Process iface (Maybe (MessagePID service_iface)) st st
+data Process : (iface : reqType -> Type) -> Type -> 
+               (in_state : ProcState) -> (out_state : ProcState) -> Type where
+  Spawn : Process service_iface () NoRequest Complete -> 
+          Process iface (Maybe (MessagePID service_iface)) st st
   Request : MessagePID service_iface -> (msg : service_reqType) -> Process iface (service_iface msg) st st
+  Action : IO a -> Process iface a st st
+    
   Respond : ((msg : reqType) -> Process iface (iface msg) NoRequest NoRequest) -> Process iface (Maybe reqType) st Sent
   Loop : Inf (Process iface a NoRequest Complete) -> Process iface a Sent Complete
   
